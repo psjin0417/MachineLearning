@@ -1,1 +1,2 @@
 video/
+echo "*.pkl" >> .gitignore
