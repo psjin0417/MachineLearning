@@ -4,15 +4,16 @@ import numpy as np
 from skimage.feature import hog
 
 # --- 설정 변수 ---
-VIDEO_PATH = "./video/2.mp4"       
-MODEL_PATH = "./svm_model.pkl"     
+VIDEO_PATH = "./video/7.mp4"       
+MODEL_PATH = "./svm_model_v2_2.pkl"     
 TARGET_SIZE = (128, 128)           
 
 # [설정 1] 리사이즈 비율 (0.1 ~ 1.0)
 RESIZE_SCALE = 0.2
 
 # [설정 2] 회전 설정
-ROTATE_CODE = cv2.ROTATE_90_CLOCKWISE 
+ROTATE_CODE = None # cv2.ROTATE_90_CLOCKWISE 
+
 
 # [설정 3] 특징 추출 모드 (V2 적용 부분)
 # 'gray' : 기존 방식 (흑백)
@@ -23,44 +24,44 @@ FEATURE_MODE = 'hsv_v'
 # [중요] HOG 파라미터 (학습 때와 동일하게!)
 HOG_PARAMS = {
     'orientations': 9,
-    'pixels_per_cell': (8, 8),
+    'pixels_per_cell': (16, 16), # [수정] 8->16 (학습 코드와 동일하게)
     'cells_per_block': (2, 2),
     'block_norm': 'L2-Hys',
     'visualize': False,
     'transform_sqrt': True,
-    'channel_axis': None # 1채널(Gray/V-channel)일 경우 None
+    'channel_axis': None 
 }
+
+# [추가] 컬러 히스토그램 파라미터
+HIST_BINS = (32, 32) 
+
+def extract_color_histogram(image, bins=(32, 32)):
+    """
+    이미지에서 색상 정보를 추출하여 벡터로 만듭니다. (학습 코드와 동일)
+    """
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    hist = cv2.calcHist([hsv], [0, 1], None, bins, [0, 180, 0, 256])
+    cv2.normalize(hist, hist)
+    return hist.flatten()
 
 def extract_features_single_image(img):
     """
-    이미지 한 장에서 특징을 추출하는 함수 (V2 로직 적용)
+    이미지 한 장에서 특징을 추출하는 함수 (HOG + Color 결합)
     """
     # 1. 리사이즈 (HOG 입력 크기로 맞춤)
     img_resized = cv2.resize(img, TARGET_SIZE)
 
-    # 2. 모드에 따른 전처리 및 색상 변환
-    if FEATURE_MODE == 'hsv_v':
-        # [V2 핵심] RGB -> HSV 변환 후 V(명도) 채널만 추출
-        hsv = cv2.cvtColor(img_resized, cv2.COLOR_BGR2HSV)
-        target_img = hsv[:, :, 2] # Index 2 = V Channel
-        
-        # 파라미터 강제 설정 (V채널은 1채널 이미지임)
-        HOG_PARAMS['channel_axis'] = None 
+    # 2. HOG 특징 추출 (Grayscale)
+    gray = cv2.cvtColor(img_resized, cv2.COLOR_BGR2GRAY)
+    hog_feature = hog(gray, **HOG_PARAMS)
 
-    elif FEATURE_MODE == 'hsv_all':
-        # HSV 3채널 모두 사용 (학습 모델이 이를 지원해야 함)
-        hsv = cv2.cvtColor(img_resized, cv2.COLOR_BGR2HSV)
-        target_img = hsv
-        HOG_PARAMS['channel_axis'] = -1 
+    # 3. 컬러 히스토그램 추출
+    color_feature = extract_color_histogram(img_resized, bins=HIST_BINS)
 
-    else:
-        # 기존 방식 (Grayscale)
-        target_img = cv2.cvtColor(img_resized, cv2.COLOR_BGR2GRAY)
-        HOG_PARAMS['channel_axis'] = None
-
-    # 3. HOG 특징 추출
-    hog_feature = hog(target_img, **HOG_PARAMS)
-    return hog_feature.reshape(1, -1)
+    # 4. 특징 결합
+    combined_feature = np.hstack([hog_feature, color_feature])
+    
+    return combined_feature.reshape(1, -1)
 
 def sliding_window(image, step_size, window_size):
     for y in range(0, image.shape[0] - window_size[1], step_size):
@@ -86,7 +87,7 @@ if __name__ == "__main__":
 
     # 슬라이딩 윈도우 간격 (작을수록 촘촘하지만 느림)
     STEP_SIZE = 16 
-    CONFIDENCE_THRESHOLD = 0.6 
+    CONFIDENCE_THRESHOLD = 0.95 
 
     while True:
         ret, frame = cap.read()

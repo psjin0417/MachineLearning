@@ -163,4 +163,4 @@ class DataLabeler:
 # 실행
 if __name__ == "__main__":
     labeler = DataLabeler()
-    labeler.run()
+    labeler.run()            

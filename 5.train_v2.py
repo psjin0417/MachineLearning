@@ -8,8 +8,8 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 
 # --- 설정 변수 ---
 # 이전 단계에서 만든 파일명으로 변경 (HOG+Color라면 _color.pkl 일 수 있음)
-INPUT_FILE = "./dataset_features_color.pkl" 
-MODEL_FILE = "./svm_model_v2.pkl"
+INPUT_FILE = "./dataset_features_color_2.pkl" 
+MODEL_FILE = "./svm_model_v2_2.pkl"
 
 def train_v2():
     # 1. 데이터 로드
