@@ -4,8 +4,8 @@ import numpy as np
 from skimage.feature import hog
 
 # --- 설정 변수 ---
-VIDEO_PATH = "./video/3.mp4"           
-MODEL_PATH = "./svm_model_3.pkl"     
+VIDEO_PATH = "./video/1.mp4"           
+MODEL_PATH = "./svm_model_v2_2.pkl"     
 TARGET_SIZE = (128, 128)           
 
 # [설정 1] 탐지할 윈도우 크기 목록 (거리에 따른 물체 크기 대응)
@@ -19,7 +19,7 @@ WINDOW_SIZES = [
 # [설정 2] 리사이즈 비율 (0.1 ~ 1.0)
 # 1.0 = 원본 크기 그대로 (가장 느림, 작은 물체 탐지 유리)
 # 0.5 = 절반 크기로 줄임 (속도 4배 빠름, 큰 물체 탐지 유리)
-RESIZE_SCALE = 0.1
+RESIZE_SCALE = 0.3
 
 # [설정 3] 회전 설정
 # cv2.ROTATE_90_CLOCKWISE: 시계방향 90도
@@ -29,18 +29,36 @@ ROTATE_CODE = cv2.ROTATE_90_CLOCKWISE
 # [중요] HOG 파라미터 (학습 때와 동일하게!)
 HOG_PARAMS = {
     'orientations': 9,
-    'pixels_per_cell': (8, 8),     # 8x8 (8100 features)
+    'pixels_per_cell': (16, 16),     # 8x8 (8100 features)
     'cells_per_block': (2, 2),
     'block_norm': 'L2-Hys',
     'visualize': False,
     'transform_sqrt': True
 }
 
+# 컬러 히스토그램 파라미터 (학습과 동일하게)
+HIST_BINS = (32, 32)
+
+def extract_color_histogram(image, bins=(32, 32)):
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    hist = cv2.calcHist([hsv], [0, 1], None, bins, [0, 180, 0, 256])
+    cv2.normalize(hist, hist)
+    return hist.flatten()
+
 def extract_features_single_image(img):
     img_resized = cv2.resize(img, TARGET_SIZE)
+    
+    # 1. HOG 추출
     gray = cv2.cvtColor(img_resized, cv2.COLOR_BGR2GRAY)
     hog_feature = hog(gray, **HOG_PARAMS)
-    return hog_feature.reshape(1, -1)
+    
+    # 2. Color Hist 추출
+    color_feature = extract_color_histogram(img_resized, bins=HIST_BINS)
+    
+    # 3. 결합
+    combined = np.hstack([hog_feature, color_feature])
+    
+    return combined.reshape(1, -1)
 
 def sliding_window(image, step_size, window_size):
     for y in range(0, image.shape[0] - window_size[1], step_size):

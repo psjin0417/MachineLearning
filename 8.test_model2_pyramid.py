@@ -4,8 +4,8 @@ import numpy as np
 from skimage.feature import hog
 
 # --- 설정 변수 ---
-VIDEO_PATH = "./video/1.mp4"       
-MODEL_PATH = "./svm_model_3.pkl"     
+VIDEO_PATH = "./video/2.mp4"       
+MODEL_PATH = "./svm_model_v2_2.pkl"     
 TARGET_SIZE = (128, 128)           
 
 # [설정 1] 탐지할 윈도우 크기 목록 (거리에 따른 물체 크기 대응)
@@ -17,24 +17,43 @@ WINDOW_SIZES = [
 ]
 
 # 리사이즈 및 회전 설정
-RESIZE_SCALE = 0.1              # 속도를 위해 작게 설정
-ROTATE_CODE = cv2.ROTATE_90_CLOCKWISE 
+RESIZE_SCALE = 0.4              # 속도를 위해 작게 설정
+ROTATE_CODE = None 
+SHOW_HEATMAP = False            # True: 히트맵 보이기, False: 바운딩박스만 보이기 
 
 # HOG 파라미터 (학습과 동일하게)
 HOG_PARAMS = {
     'orientations': 9,
-    'pixels_per_cell': (8, 8),
+    'pixels_per_cell': (16, 16), # 차원을 줄이기 위해 16x16 추천
     'cells_per_block': (2, 2),
     'block_norm': 'L2-Hys',
     'visualize': False,
     'transform_sqrt': True
 }
 
+# 컬러 히스토그램 파라미터 (학습과 동일하게)
+HIST_BINS = (32, 32)
+
+def extract_color_histogram(image, bins=(32, 32)):
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    hist = cv2.calcHist([hsv], [0, 1], None, bins, [0, 180, 0, 256])
+    cv2.normalize(hist, hist)
+    return hist.flatten()
+
 def extract_features_single_image(img):
     img_resized = cv2.resize(img, TARGET_SIZE)
+    
+    # 1. HOG 추출
     gray = cv2.cvtColor(img_resized, cv2.COLOR_BGR2GRAY)
     hog_feature = hog(gray, **HOG_PARAMS)
-    return hog_feature.reshape(1, -1)
+    
+    # 2. Color Hist 추출
+    color_feature = extract_color_histogram(img_resized, bins=HIST_BINS)
+    
+    # 3. 결합
+    combined = np.hstack([hog_feature, color_feature])
+    
+    return combined.reshape(1, -1)
 
 def sliding_window(image, step_size, window_size):
     for y in range(0, image.shape[0] - window_size[1], step_size):
@@ -102,19 +121,42 @@ if __name__ == "__main__":
         # [시각화] 히트맵을 컬러로 변환하여 원본에 덮어씌우기
         # -----------------------------------------------------------
         
-        # 1. 정규화 (0 ~ 255 사이 값으로 변환)
-        heatmap_norm = np.clip(heatmap, 0, 255) # 안전장치
+        # -----------------------------------------------------------
+        # [후처리] 히트맵 분석 및 바운딩 박스 추출
+        # -----------------------------------------------------------
+        
+        # 1. 정규화 (0 ~ 255)
+        heatmap_norm = np.clip(heatmap, 0, 255) 
         if np.max(heatmap_norm) > 0:
             heatmap_norm = heatmap_norm / np.max(heatmap_norm) * 255
-        
         heatmap_norm = heatmap_norm.astype(np.uint8)
 
-        # 2. 컬러맵 적용 (JET: 파랑(차가움) -> 빨강(뜨거움))
-        heatmap_color = cv2.applyColorMap(heatmap_norm, cv2.COLORMAP_JET)
+        # 2. 하나의 바운딩 박스 추출
+        # 히트맵에서 127(약 50% 강도) 이상인 영역만 찾음
+        _, thresh = cv2.threshold(heatmap_norm, 127, 255, cv2.THRESH_BINARY)
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        # 3. 원본 영상과 합성 (Weighted Add)
-        # 원본 60% + 히트맵 40%
-        result = cv2.addWeighted(frame, 0.6, heatmap_color, 0.4, 0)
+        if contours:
+            # 가장 큰 영역 하나만 선택
+            max_cnt = max(contours, key=cv2.contourArea)
+            x, y, w, h = cv2.boundingRect(max_cnt)
+            
+            # 바운딩 박스 그리기 (초록색)
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            cv2.putText(frame, "Kickboard", (x, y - 5), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
+        # -----------------------------------------------------------
+        # [시각화] 옵션에 따른 출력
+        # -----------------------------------------------------------
+        if SHOW_HEATMAP:
+            # 컬러맵 적용 (JET)
+            heatmap_color = cv2.applyColorMap(heatmap_norm, cv2.COLORMAP_JET)
+            # 원본 + 히트맵 합성
+            result = cv2.addWeighted(frame, 0.6, heatmap_color, 0.4, 0)
+        else:
+            # 바운딩 박스만 그려진 원본
+            result = frame
 
         # 결과 출력
         cv2.imshow("Kickboard Multi-Scale Heatmap", result)
