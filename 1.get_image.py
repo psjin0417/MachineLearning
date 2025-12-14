@@ -85,15 +85,15 @@ def save_frames_from_video(video_path, output_folder, interval=30, rotate_code=N
 
 # --- 사용 예시 ---
 if __name__ == "__main__":
-    my_video = "./video/7.mp4" 
+    my_video = "./video/10.mp4" 
     save_dir = "./raw_data"
     
     # 회전 옵션 (필요 없으면 None)
-    rotation = cv2.ROTATE_90_CLOCKWISE 
-    
+    # rotation = cv2.ROTATE_90_CLOCKWISE 
+    rotation = None
     # 실행
     # 1. 비율로 줄이기 (resize_ratio=0.5)
     # save_frames_from_video(my_video, save_dir, interval=10, rotate_code=rotation, resize_ratio=0.5)
     
     # 2. 고정 크기로 줄이기 (fixed_size=(640, 480))
-    save_frames_from_video(my_video, save_dir, interval=10, rotate_code=rotation, fixed_size=(640, 480))
+    save_frames_from_video(my_video, save_dir, interval=10, rotate_code=rotation, fixed_size=None)

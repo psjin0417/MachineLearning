@@ -13,8 +13,13 @@ SRC_NEG_DIR = "./negative"
 DST_POS_DIR = "./positive_aug"
 DST_NEG_DIR = "./negative_aug"
 
-def rotate_image(image, angle):
-    """이미지를 중심 기준으로 회전시킵니다."""
+# 증강 배수 (원본 포함 몇 배로 늘릴지)
+# 여기서는 원본 1장 + 증강 2장 = 총 3배
+AUGMENT_COUNT = 2 
+
+def rotate_image(image):
+    """이미지를 랜덤 각도(-15 ~ +15)로 회전시킵니다."""
+    angle = random.randint(-15, 15)
     h, w = image.shape[:2]
     center = (w // 2, h // 2)
     
@@ -27,14 +32,10 @@ def rotate_image(image, angle):
 
 def change_brightness(image):
     """이미지의 밝기를 랜덤하게 조절합니다."""
-    # -50 ~ +50 사이의 값을 랜덤으로 더함
     value = random.randint(-50, 50)
-    
-    # HSV로 변환하여 V(명도) 채널만 조절하는 것이 색상 왜곡이 적음
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     h, s, v = cv2.split(hsv)
 
-    # cv2.add는 255를 넘거나 0 밑으로 가면 알아서 클리핑(clipping)해줌
     if value >= 0:
         v = cv2.add(v, value)
     else:
@@ -43,6 +44,31 @@ def change_brightness(image):
     final_hsv = cv2.merge((h, s, v))
     img = cv2.cvtColor(final_hsv, cv2.COLOR_HSV2BGR)
     return img
+
+def add_noise(image):
+    """가우시안 노이즈 추가 (화질 저하 시뮬레이션)"""
+    row, col, ch = image.shape
+    mean = 0
+    sigma = 25  # 노이즈 강도
+    gauss = np.random.normal(mean, sigma, (row, col, ch))
+    noisy = image + gauss
+    
+    # 값이 0~255를 벗어나지 않도록 클리핑
+    noisy = np.clip(noisy, 0, 255)
+    return noisy.astype(np.uint8)
+
+def add_blur(image):
+    """모션 블러 추가 (움직임 시뮬레이션)"""
+    size = random.choice([3, 5, 7]) # 커널 크기 (홀수)
+    
+    # 일반 가우시안 블러 사용 (혹은 Motion Blur 커널 직접 구현 가능)
+    # 여기서는 간단히 GaussianBlur 사용
+    blurred = cv2.GaussianBlur(image, (size, size), 0)
+    return blurred
+
+def horizontal_flip(image):
+    """좌우 반전"""
+    return cv2.flip(image, 1)
 
 def augment_and_save(src_folder, dst_folder, prefix):
     # 폴더 생성
@@ -56,6 +82,15 @@ def augment_and_save(src_folder, dst_folder, prefix):
     
     count = 0
     
+    # 사용 가능한 증강 함수 리스트
+    aug_functions = [
+        (horizontal_flip, "flip"),
+        (rotate_image, "rot"),
+        (change_brightness, "brt"),
+        (add_noise, "noise"),
+        (add_blur, "blur")
+    ]
+    
     for filepath in files:
         filename = os.path.basename(filepath)
         name, ext = os.path.splitext(filename)
@@ -63,41 +98,28 @@ def augment_and_save(src_folder, dst_folder, prefix):
         img = cv2.imread(filepath)
         if img is None: continue
 
-        # ---------------------------------------------------------
-        # 1. 원본 저장 (Original)
-        # ---------------------------------------------------------
+        # 1. 원본 저장 (필수)
         cv2.imwrite(os.path.join(dst_folder, f"{name}_orig{ext}"), img)
         count += 1
-
-        # ---------------------------------------------------------
-        # 2. 수평 뒤집기 (Horizontal Flip) - 좌우 반전
-        # ---------------------------------------------------------
-        # 킥보드가 왼쪽을 보나 오른쪽을 보나 킥보드임
-        flipped = cv2.flip(img, 1) 
-        cv2.imwrite(os.path.join(dst_folder, f"{name}_flip{ext}"), flipped)
-        count += 1
-
-        # ---------------------------------------------------------
-        # 3. 회전 (Rotation) - 랜덤 각도 (-15도 ~ +15도)
-        # ---------------------------------------------------------
-        # 약간 기울어진 킥보드도 인식하기 위해
-        angle = random.randint(-15, 15)
-        rotated = rotate_image(img, angle)
-        cv2.imwrite(os.path.join(dst_folder, f"{name}_rot{ext}"), rotated)
-        count += 1
-
-        # ---------------------------------------------------------
-        # 4. 밝기 조절 (Brightness) - 랜덤 밝기
-        # ---------------------------------------------------------
-        # 야외 조명 환경 대응 (추천)
-        bright_img = change_brightness(img)
-        cv2.imwrite(os.path.join(dst_folder, f"{name}_brt{ext}"), bright_img)
-        count += 1
+        
+        # 2. 랜덤 증강 적용 (AUGMENT_COUNT 만큼 선택)
+        # 중복 없이 선택하기 위해 sample 사용
+        selected_augs = random.sample(aug_functions, AUGMENT_COUNT)
+        
+        for func, suffix in selected_augs:
+            # 증강 적용
+            aug_img = func(img)
+            
+            # 파일 저장
+            save_name = f"{name}_{suffix}{ext}"
+            cv2.imwrite(os.path.join(dst_folder, save_name), aug_img)
+            count += 1
 
     print(f"Finished! Total {count} images saved to {dst_folder}")
+    print(f"(Factor: {count / len(files):.1f}x)")
 
 if __name__ == "__main__":
-    print(">>> 데이터 증강 시작...")
+    print(">>> 데이터 증강 시작... (Target: 3x Size)")
     
     # Positive 데이터 증강
     augment_and_save(SRC_POS_DIR, DST_POS_DIR, "pos")
