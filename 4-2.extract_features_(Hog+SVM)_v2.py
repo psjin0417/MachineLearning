@@ -7,7 +7,7 @@ from skimage.feature import hog
 # --- 설정 변수 ---
 POS_DATA_DIR = "./positive_aug"
 NEG_DATA_DIR = "./negative_aug"
-OUTPUT_FILE = "./dataset_features_color_2.pkl" # 파일명 변경
+OUTPUT_FILE = "./dataset_features_color_3.pkl" # 파일명 변경
 
 # HOG 파라미터
 HOG_PARAMS = {

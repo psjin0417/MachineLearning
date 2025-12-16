@@ -6,19 +6,19 @@ import pickle
 from skimage.feature import hog
 
 # --- 설정 변수 ---
-VIDEO_PATH = "./video/2.mp4"       
-MODEL_PATH = "./svm_model_v2_2.pkl"     
+VIDEO_PATH = "./video/8.mp4"       
+MODEL_PATH = "./svm_model_v3_gridsearch.pkl"          
 ROI_FILE = "./roi_config.pkl"   # ROI 설정 저장 파일
 TARGET_SIZE = (128, 128)           
 
 # 리사이즈 및 회전 설정
-RESIZE_SCALE = 0.5              
+RESIZE_SCALE = 0.4            
 ROTATE_CODE = None 
-SHOW_HEATMAP = False            # True: 히트맵 보이기, False: 바운딩박스만 보이기 
+SHOW_HEATMAP = True            # True: 히트맵 보이기, False: 바운딩박스만 보이기 
 
 # [중요] 박스 예측 정밀도 조절 파라미터
 HEATMAP_THRESH = 150            # (0~255) 높을수록 박스가 작고 확실해짐
-CONFIDENCE_THRESHOLD = 0.98     # (0.0~1.0) 모델 확신도 임계값
+CONFIDENCE_THRESHOLD = 0.95     # (0.0~1.0) 모델 확신도 임계값
 
 # [중요] 피라미드 스케일 설정
 SCALE_STEP = 1.1
@@ -104,11 +104,16 @@ def detect_multi_scale(model, frame, roi_mask=None):
 
     scale = 1.0 
     
+    # [최적화] 배치 처리를 위한 리스트
+    batch_features = []
+    batch_coords = [] # (real_x, real_y, real_w, real_h)
+    
     while True:
         if img_tosearch.shape[0] < TARGET_SIZE[1] or img_tosearch.shape[1] < TARGET_SIZE[0]:
             break
             
         gray = cv2.cvtColor(img_tosearch, cv2.COLOR_BGR2GRAY)
+        # HOG Feature Map 미리 계산 (한 번만!)
         hog_features_map = hog(gray, **HOG_PARAMS)
         
         n_blocks_per_window = (TARGET_SIZE[0] // PIXELS_PER_CELL) - 1
@@ -120,11 +125,15 @@ def detect_multi_scale(model, frame, roi_mask=None):
         if max_y_cells < 0 or max_x_cells < 0:
             break
 
+        # 현재 스케일에서의 좌표 계산 상수를 미리 계산
+        curr_scale_inv = 1.0 / (RESIZE_SCALE / scale)
+        real_w = int(TARGET_SIZE[0] * curr_scale_inv)
+        real_h = int(TARGET_SIZE[1] * curr_scale_inv)
+
         for yc in range(0, max_y_cells, step_cells):
             for xc in range(0, max_x_cells, step_cells):
                 
-                # 최적화: ROI 마스크 체크는 정확도 문제로 일단 스킵 (나중에 추가 가능)
-                
+                # 1. HOG Feature 잘라오기 (슬라이싱) - 매우 빠름
                 feature_chunk = hog_features_map[yc : yc + n_blocks_per_window, 
                                                xc : xc + n_blocks_per_window, :, :, :]
                 hog_feat = feature_chunk.ravel() 
@@ -135,6 +144,22 @@ def detect_multi_scale(model, frame, roi_mask=None):
                 x_pixel = xc * PIXELS_PER_CELL
                 y_pixel = yc * PIXELS_PER_CELL
                 
+                # 원본 좌표 계산
+                real_x = int(x_pixel * curr_scale_inv)
+                real_y = int(y_pixel * curr_scale_inv)
+                center_x = real_x + real_w // 2
+                center_y = real_y + real_h // 2
+                
+                # [최적화] ROI 밖이면 특징 추출도 하지 않고 스킵 (Feature Extraction 부하 감소)
+                if roi_mask is not None:
+                     # 이미지 범위 체크
+                     if not (0 <= center_y < roi_mask.shape[0] and 0 <= center_x < roi_mask.shape[1]):
+                         continue
+                     # ROI 마스크 체크
+                     if roi_mask[center_y, center_x] == 0:
+                         continue
+
+                # 2. Color Feature 추출 (이미지 crop 필요) - 여기가 병목지점
                 window_img = img_tosearch[y_pixel : y_pixel + TARGET_SIZE[1], 
                                           x_pixel : x_pixel + TARGET_SIZE[0]]
                 
@@ -142,36 +167,36 @@ def detect_multi_scale(model, frame, roi_mask=None):
                     continue
                     
                 color_feat = extract_color_histogram(window_img, bins=HIST_BINS)
-                combined = np.hstack([hog_feat, color_feat]).reshape(1, -1)
                 
-                prob = model.predict_proba(combined)[0][1]
-                
-                if prob > CONFIDENCE_THRESHOLD: 
-                    curr_scale_inv = 1.0 / (RESIZE_SCALE / scale)
-                    
-                    real_x = int(x_pixel * curr_scale_inv)
-                    real_y = int(y_pixel * curr_scale_inv)
-                    real_w = int(TARGET_SIZE[0] * curr_scale_inv)
-                    real_h = int(TARGET_SIZE[1] * curr_scale_inv)
-                    
-                    center_x = real_x + real_w // 2
-                    center_y = real_y + real_h // 2
-                    
-                    # [최적화 & 마스킹] ROI 밖이면 아예 히트맵에 그리지 않음
-                    if roi_mask is not None:
-                        if 0 <= center_y < roi_mask.shape[0] and 0 <= center_x < roi_mask.shape[1]:
-                             if roi_mask[center_y, center_x] == 0:
-                                 continue
-                    
-                    real_y2 = min(real_y + real_h, frame.shape[0])
-                    real_x2 = min(real_x + real_w, frame.shape[1])
-                    
-                    heatmap[real_y:real_y2, real_x:real_x2] += prob
+                # 3. 결합 및 배치 추가
+                combined = np.hstack([hog_feat, color_feat])
+                batch_features.append(combined)
+                batch_coords.append((real_x, real_y, real_w, real_h))
 
         img_tosearch = cv2.resize(img_tosearch, 
                                 (int(img_tosearch.shape[1] / SCALE_STEP), 
                                  int(img_tosearch.shape[0] / SCALE_STEP)))
         scale *= SCALE_STEP
+
+    # [핵심] 배치 예측 (Vectorized Prediction) - 한 번에 수천 개 예측 수행
+    if len(batch_features) > 0:
+        # numpy array로 변환 (매우 중요)
+        X_batch = np.array(batch_features)
+        
+        # 한 번에 확률 계산
+        all_probs = model.predict_proba(X_batch) # shape: (N, 2)
+        
+        # 결과 히트맵에 적용
+        for i, prob_pair in enumerate(all_probs):
+            prob = prob_pair[1] # Positive 확률
+            
+            if prob > CONFIDENCE_THRESHOLD:
+                rx, ry, rw, rh = batch_coords[i]
+                
+                real_y2 = min(ry + rh, frame.shape[0])
+                real_x2 = min(rx + rw, frame.shape[1])
+                
+                heatmap[ry:real_y2, rx:real_x2] += prob
 
     return heatmap
 

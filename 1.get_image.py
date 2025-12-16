@@ -85,7 +85,7 @@ def save_frames_from_video(video_path, output_folder, interval=30, rotate_code=N
 
 # --- 사용 예시 ---
 if __name__ == "__main__":
-    my_video = "./video/10.mp4" 
+    my_video = "./video/11.mp4" 
     save_dir = "./raw_data"
     
     # 회전 옵션 (필요 없으면 None)

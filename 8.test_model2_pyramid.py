@@ -4,22 +4,21 @@ import numpy as np
 from skimage.feature import hog
 
 # --- 설정 변수 ---
-VIDEO_PATH = "./video/2.mp4"       
-MODEL_PATH = "./svm_model_v2_2.pkl"     
+VIDEO_PATH = "./video/4.mp4"       
+MODEL_PATH = "./svm_model_v3_gridsearch.pkl"     
 TARGET_SIZE = (128, 128)           
 
 # [설정 1] 탐지할 윈도우 크기 목록 (거리에 따른 물체 크기 대응)
 WINDOW_SIZES = [
-    (64, 64), 
-    (96, 96), 
+
     (128, 128), 
     (160, 160)
 ]
 
 # 리사이즈 및 회전 설정
-RESIZE_SCALE = 0.4              # 속도를 위해 작게 설정
+RESIZE_SCALE = 0.5              # 속도를 위해 작게 설정
 ROTATE_CODE = None 
-SHOW_HEATMAP = False            # True: 히트맵 보이기, False: 바운딩박스만 보이기 
+SHOW_HEATMAP = True            # True: 히트맵 보이기, False: 바운딩박스만 보이기 
 
 # HOG 파라미터 (학습과 동일하게)
 HOG_PARAMS = {
@@ -71,7 +70,7 @@ if __name__ == "__main__":
     BASIC_STEP_SIZE = 16 
     
     # 확률이 이 값 이상일 때만 히트맵에 열기를 더함 (노이즈 제거)
-    MIN_PROB = 0.95
+    MIN_PROB = 0.9
 
     while True:
         ret, frame = cap.read()

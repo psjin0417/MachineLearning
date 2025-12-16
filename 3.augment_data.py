@@ -106,12 +106,12 @@ def augment_and_save(src_folder, dst_folder, prefix):
         # 중복 없이 선택하기 위해 sample 사용
         selected_augs = random.sample(aug_functions, AUGMENT_COUNT)
         
-        for func, suffix in selected_augs:
+        for i, (func, _) in enumerate(selected_augs):
             # 증강 적용
             aug_img = func(img)
             
-            # 파일 저장
-            save_name = f"{name}_{suffix}{ext}"
+            # 파일 저장 (증강 종류를 숨기고 인덱스만 사용)
+            save_name = f"{name}_aug{i}{ext}"
             cv2.imwrite(os.path.join(dst_folder, save_name), aug_img)
             count += 1
 

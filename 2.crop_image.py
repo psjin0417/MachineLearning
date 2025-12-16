@@ -7,8 +7,11 @@ from datetime import datetime  # [추가] 시간 정보를 위해 import
 RAW_DATA_DIR = "./raw_data"     # 원본 이미지가 있는 폴더
 POS_DATA_DIR = "./positive"     # Positive 데이터 저장 폴더
 NEG_DATA_DIR = "./negative"     # Negative 데이터 저장 폴더
+# RAW_DATA_DIR = "./test/raw_data"     # 원본 이미지가 있는 폴더
+# POS_DATA_DIR = "./test/positive"     # Positive 데이터 저장 폴더
+# NEG_DATA_DIR = "./test/negative"     # Negative 데이터 저장 폴더
 TARGET_SIZE = (128, 128)        # 저장할 이미지 크기 (128 x 128)
-
+ 
 class DataLabeler:
     def __init__(self):
         # 디렉토리 생성

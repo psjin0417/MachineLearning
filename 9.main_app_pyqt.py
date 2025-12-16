@@ -13,8 +13,8 @@ from PyQt5.QtCore import pyqtSignal, pyqtSlot, Qt, QThread, QSize
 from skimage.feature import hog
 
 # --- Global Constants & Parameters ---
-VIDEO_PATH = "./video/2.mp4"
-MODEL_PATH = "./svm_model_v2_2.pkl"
+VIDEO_PATH = "./video/10.mp4"
+MODEL_PATH = "./svm_model_v3_gridsearch.pkl"
 ROI_FILE = "./roi_config.pkl"
 TARGET_SIZE = (128, 128)
 
@@ -288,7 +288,7 @@ class App(QMainWindow):
         
         # Right: Log Section
         log_layout = QVBoxLayout()
-        log_label = QLabel("Event Log (Danger Zone)")
+        log_label = QLabel("Event Log")
         log_label.setStyleSheet("font-weight: bold; font-size: 14px;")
         log_layout.addWidget(log_label)
         
